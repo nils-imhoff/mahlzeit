@@ -1,1 +1,4 @@
-__pycache__/\n*.pyc\n.vscode/\nvenv/\nmealplanner.db\n
+__pycache__/
+*.pyc
+venv/
+mealplanner.db
