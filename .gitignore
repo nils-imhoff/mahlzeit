@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 venv/
 mealplanner.db
+*.csv
+*.pdf
+*.json

@@ -2,60 +2,20 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 import json
 import sqlite3
+import pandas as pd
+from fpdf import FPDF
 
 
 class MealPlannerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Meal Planner")
-        self.root.geometry("1400x1400")  # Breite x Höhe
+        self.root.geometry("1000x800")  # Breite x Höhe
 
         self.root.configure(bg="#f0f0f0")
 
         self.init_db()
-        self.meals = []
-        self.ingredients = {}
-
-        # Style-Definitionen
-        style = ttk.Style()
-        style.configure("TLabel", font=("Arial", 16), background="#f0f0f0")
-        style.configure("TEntry", font=("Arial", 16))
-        style.configure("TButton", font=("Arial", 16), padding=10)
-        style.configure("TOptionMenu", font=("Arial", 16))
-        style.configure("Treeview.Heading", font=("Arial", 16, "bold"))
-        style.configure("Treeview", font=("Arial", 14), rowheight=30)
-
-        # Anzahl der Personen
-        self.person_count_label = ttk.Label(root, text="Anzahl der Personen:")
-        self.person_count_label.pack(pady=10)
-        self.person_count_entry = ttk.Entry(root)
-        self.person_count_entry.pack(pady=5)
-
-        # Anzahl der vegetarischen Personen
-        self.vegetarian_count_label = ttk.Label(root, text="Anzahl der Vegetarier:")
-        self.vegetarian_count_label.pack(pady=10)
-        self.vegetarian_count_entry = ttk.Entry(root)
-        self.vegetarian_count_entry.pack(pady=5)
-
-        # Mahlzeiten Auswahl
-        self.meal_label = ttk.Label(root, text="Wähle eine Mahlzeit:")
-        self.meal_label.pack(pady=10)
-        self.meal_var = tk.StringVar()
-        self.meal_options = ["Frühstück", "Mittagessen", "Abendessen"]
-        self.meal_menu = ttk.OptionMenu(
-            root, self.meal_var, self.meal_options[0], *self.meal_options
-        )
-        self.meal_menu.pack(pady=5)
-
-        # Gerichte Auswahl
-        self.dish_label = ttk.Label(
-            root, text="Wähle ein Gericht oder füge ein neues hinzu:"
-        )
-        self.dish_label.pack(pady=10)
-        self.dish_var = tk.StringVar()
-        self.dish_entry = ttk.Entry(root, textvariable=self.dish_var)
-        self.dish_entry.pack(pady=5)
-
+        self.default_ingredients = {}
         self.dish_options = {
             "Frühstück": ["Haferschleim", "Brot"],
             "Mittagessen": ["Brotmahlzeit"],
@@ -93,15 +53,77 @@ class MealPlannerApp:
             "Eintopf": [("Gemüse", 300, "Gramm"), ("Fleisch", 150, "Gramm")],
             "Gemüsesuppe": [("Gemüse", 300, "Gramm")],
         }
-        self.meal_var.trace("w", self.update_dishes)
+        self.meals = []
+        self.ingredients = {}
+
+        # Style-Definitionen
+        style = ttk.Style()
+        style.configure("TLabel", font=("Arial", 14), background="#f0f0f0")
+        style.configure("TEntry", font=("Arial", 14))
+        style.configure("TButton", font=("Arial", 14), padding=10)
+        style.configure("TOptionMenu", font=("Arial", 14))
+        style.configure("Treeview.Heading", font=("Arial", 14, "bold"))
+        style.configure("Treeview", font=("Arial", 12), rowheight=30)
+
+        # Frames für die Abschnitte
+        top_frame = ttk.Frame(root)
+        top_frame.pack(pady=10)
+
+        middle_frame = ttk.Frame(root)
+        middle_frame.pack(pady=10, fill='x')
+
+        bottom_frame = ttk.Frame(root)
+        bottom_frame.pack(pady=10, expand=True, fill='both')
+
+        # Anzahl der Personen
+        self.person_count_label = ttk.Label(top_frame, text="Anzahl der Personen:")
+        self.person_count_label.grid(row=0, column=0, padx=5)
+        self.person_count_entry = ttk.Entry(top_frame)
+        self.person_count_entry.grid(row=0, column=1, padx=5)
+        self.person_count_entry.insert(0, "1")  # Default value
+        self.person_count_entry.bind("<KeyRelease>", self.update_totals)
+
+        # Anzahl der vegetarischen Personen
+        self.vegetarian_count_label = ttk.Label(top_frame, text="Anzahl der Vegetarier:")
+        self.vegetarian_count_label.grid(row=0, column=2, padx=5)
+        self.vegetarian_count_entry = ttk.Entry(top_frame)
+        self.vegetarian_count_entry.grid(row=0, column=3, padx=5)
+        self.vegetarian_count_entry.insert(0, "0")  # Default value
+
+        # Mahlzeiten Auswahl
+        self.meal_label = ttk.Label(top_frame, text="Wähle eine Mahlzeit:")
+        self.meal_label.grid(row=1, column=0, padx=5)
+        self.meal_var = tk.StringVar()
+        self.meal_options = ["Frühstück", "Mittagessen", "Abendessen"]
+        self.meal_menu = ttk.OptionMenu(
+            top_frame, self.meal_var, self.meal_options[0], *self.meal_options, command=self.update_dishes
+        )
+        self.meal_menu.grid(row=1, column=1, padx=5)
+
+        # Gerichte Auswahl
+        self.dish_label = ttk.Label(top_frame, text="Wähle ein Gericht oder füge ein neues hinzu:")
+        self.dish_label.grid(row=1, column=2, padx=5)
+        self.dish_var = tk.StringVar()
+        self.dish_entry = ttk.Entry(top_frame, textvariable=self.dish_var)
+        self.dish_entry.grid(row=1, column=3, padx=5)
+
+        # Buttons zum Hinzufügen und Planen von Mahlzeiten
+        self.add_meal_button = ttk.Button(top_frame, text="Mahlzeit hinzufügen", command=self.add_meal)
+        self.add_meal_button.grid(row=2, column=1, pady=10)
+
+        self.plan_meals_button = ttk.Button(top_frame, text="Alle Mahlzeiten planen", command=self.plan_all_meals)
+        self.plan_meals_button.grid(row=2, column=2, pady=10)
+
+        self.plan_selected_meals_button = ttk.Button(top_frame, text="Ausgewählte Mahlzeiten planen", command=self.plan_selected_meals)
+        self.plan_selected_meals_button.grid(row=2, column=3, pady=10)
 
         # Tabelle für Zutaten
-        self.ingredients_frame = ttk.Frame(root)
+        self.ingredients_frame = ttk.Frame(middle_frame)
         self.ingredients_frame.pack(pady=10, expand=True, fill="both")
 
         self.tree = ttk.Treeview(
             self.ingredients_frame,
-            columns=("Mahlzeit", "Gericht", "Zutat", "Menge pro Person", "Einheit"),
+            columns=("Mahlzeit", "Gericht", "Zutat", "Menge pro Person", "Einheit", "Gesamtmenge"),
             show="headings",
         )
         self.tree.heading("Mahlzeit", text="Mahlzeit")
@@ -109,11 +131,13 @@ class MealPlannerApp:
         self.tree.heading("Zutat", text="Zutat")
         self.tree.heading("Menge pro Person", text="Menge pro Person")
         self.tree.heading("Einheit", text="Einheit")
-        self.tree.column("Mahlzeit", width=150)
-        self.tree.column("Gericht", width=150)
-        self.tree.column("Zutat", width=200)
-        self.tree.column("Menge pro Person", width=200)
-        self.tree.column("Einheit", width=150)
+        self.tree.heading("Gesamtmenge", text="Gesamtmenge")
+        self.tree.column("Mahlzeit", width=100)
+        self.tree.column("Gericht", width=100)
+        self.tree.column("Zutat", width=150)
+        self.tree.column("Menge pro Person", width=150)
+        self.tree.column("Einheit", width=100)
+        self.tree.column("Gesamtmenge", width=150)
 
         self.tree.pack(side="left", expand=True, fill="both")
 
@@ -123,52 +147,43 @@ class MealPlannerApp:
         self.tree.configure(yscroll=self.scrollbar.set)
         self.scrollbar.pack(side="right", fill="y")
 
-        self.add_ingredient_button = ttk.Button(
-            root, text="Zutat hinzufügen", command=self.add_ingredient
-        )
-        self.add_ingredient_button.pack(pady=5)
+        # Buttons zum Bearbeiten und Entfernen von Zutaten
+        self.add_ingredient_button = ttk.Button(bottom_frame, text="Zutat hinzufügen", command=self.add_ingredient)
+        self.add_ingredient_button.grid(row=0, column=0, padx=5)
 
-        self.remove_ingredient_button = ttk.Button(
-            root, text="Zutat entfernen", command=self.remove_ingredient
-        )
-        self.remove_ingredient_button.pack(pady=5)
+        self.remove_ingredient_button = ttk.Button(bottom_frame, text="Zutat entfernen", command=self.remove_ingredient)
+        self.remove_ingredient_button.grid(row=0, column=1, padx=5)
 
-        self.edit_ingredient_button = ttk.Button(
-            root, text="Zutat bearbeiten", command=self.edit_ingredient
-        )
-        self.edit_ingredient_button.pack(pady=5)
-
-        # Hinzufügen der Mahlzeit
-        self.add_meal_button = ttk.Button(
-            root, text="Mahlzeit hinzufügen", command=self.add_meal
-        )
-        self.add_meal_button.pack(pady=10)
-
-        # Alle Mahlzeiten planen
-        self.plan_meals_button = ttk.Button(
-            root, text="Alle Mahlzeiten planen", command=self.plan_meals
-        )
-        self.plan_meals_button.pack(pady=10)
-
-        # Ergebnisanzeige
-        self.result_label = ttk.Label(root, text="", wraplength=1000)
-        self.result_label.pack(pady=10, expand=True, fill="both")
+        self.edit_ingredient_button = ttk.Button(bottom_frame, text="Zutat bearbeiten", command=self.edit_ingredient)
+        self.edit_ingredient_button.grid(row=0, column=2, padx=5)
 
         # Vorschläge anzeigen
-        self.show_suggestions_button = ttk.Button(
-            root, text="Vorschläge anzeigen", command=self.show_suggestions
-        )
-        self.show_suggestions_button.pack(pady=10)
-
-        # Beenden der App
-        self.quit_button = ttk.Button(root, text="Beenden", command=root.quit)
-        self.quit_button.pack(pady=10)
+        self.show_suggestions_button = ttk.Button(bottom_frame, text="Vorschläge anzeigen", command=self.show_suggestions)
+        self.show_suggestions_button.grid(row=0, column=3, padx=5)
 
         # Planung speichern
-        self.save_button = ttk.Button(
-            root, text="Planung speichern", command=self.save_plan
-        )
-        self.save_button.pack(pady=5)
+        self.save_button = ttk.Button(bottom_frame, text="Planung speichern", command=self.save_plan_to_db)
+        self.save_button.grid(row=1, column=0, pady=5)
+
+        # Planung laden
+        self.load_button = ttk.Button(bottom_frame, text="Planung laden", command=self.load_plan_from_db)
+        self.load_button.grid(row=1, column=1, pady=5)
+
+        # PDF speichern
+        self.save_pdf_button = ttk.Button(bottom_frame, text="Rezepte und Einkaufsliste als PDF speichern", command=self.save_as_pdf)
+        self.save_pdf_button.grid(row=1, column=2, pady=5)
+
+        # CSV speichern
+        self.save_csv_button = ttk.Button(bottom_frame, text="Planung als CSV speichern", command=self.save_as_csv)
+        self.save_csv_button.grid(row=1, column=3, pady=5)
+
+        # Ergebnisanzeige
+        self.result_label = ttk.Label(bottom_frame, text="", wraplength=800)
+        self.result_label.grid(row=2, column=0, columnspan=4, pady=10)
+
+        # Laden der gespeicherten Planungen
+        self.load_dishes_from_db()
+        self.load_plan_from_db()
 
     def init_db(self):
         self.conn = sqlite3.connect("mealplanner.db")
@@ -185,7 +200,48 @@ class MealPlannerApp:
             )
         """
         )
+        self.cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dishes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                meal_type TEXT,
+                dish TEXT,
+                ingredient TEXT,
+                amount REAL,
+                unit TEXT
+            )
+        """
+        )
         self.conn.commit()
+
+    def load_dishes_from_db(self):
+        self.cursor.execute("SELECT DISTINCT dish, meal_type FROM dishes")
+        dishes = self.cursor.fetchall()
+        for dish, meal_type in dishes:
+            if meal_type not in self.dish_options:
+                self.dish_options[meal_type] = []
+            self.dish_options[meal_type].append(dish)
+
+        self.cursor.execute("SELECT dish, ingredient, amount, unit FROM dishes")
+        rows = self.cursor.fetchall()
+        for dish, ingredient, amount, unit in rows:
+            if dish not in self.default_ingredients:
+                self.default_ingredients[dish] = []
+            self.default_ingredients[dish].append((ingredient, amount, unit))
+
+    def load_plan_from_db(self):
+        self.cursor.execute("SELECT * FROM meals")
+        meals = self.cursor.fetchall()
+        self.tree.delete(*self.tree.get_children())
+        try:
+            person_count = int(self.person_count_entry.get())
+        except ValueError:
+            person_count = 1
+            self.person_count_entry.insert(0, "1")
+        for meal in meals:
+            meal_type, dish, ingredient, amount_per_person, unit = meal[1:]
+            total_amount = amount_per_person * person_count
+            self.tree.insert("", "end", values=(meal_type, dish, ingredient, amount_per_person, unit, total_amount))
 
     def update_dishes(self, *args):
         meal_type = self.meal_var.get()
@@ -197,10 +253,29 @@ class MealPlannerApp:
         self.tree.delete(*self.tree.get_children())
         dish = self.dish_var.get()
         if dish in self.default_ingredients:
+            try:
+                person_count = int(self.person_count_entry.get())
+            except ValueError:
+                person_count = 1
+                self.person_count_entry.insert(0, "1")
             for ingredient, amount, unit in self.default_ingredients[dish]:
+                total_amount = amount * person_count
                 self.tree.insert(
-                    "", "end", values=(meal_type, dish, ingredient, amount, unit)
+                    "", "end", values=(meal_type, dish, ingredient, amount, unit, total_amount)
                 )
+
+    def update_totals(self, *args):
+        try:
+            person_count = int(self.person_count_entry.get())
+        except ValueError:
+            person_count = 1
+            self.person_count_entry.insert(0, "1")
+
+        for item in self.tree.get_children():
+            values = self.tree.item(item)["values"]
+            amount_per_person = values[3]
+            total_amount = amount_per_person * person_count
+            self.tree.item(item, values=(values[0], values[1], values[2], values[3], values[4], total_amount))
 
     def add_ingredient(self):
         ingredient_window = tk.Toplevel(self.root)
@@ -238,9 +313,19 @@ class MealPlannerApp:
             amount = amount_entry.get()
             unit = unit_entry.get()
             if meal_type and dish and ingredient and amount and unit:
+                try:
+                    person_count = int(self.person_count_entry.get())
+                except ValueError:
+                    person_count = 1
+                total_amount = float(amount) * person_count
                 self.tree.insert(
-                    "", "end", values=(meal_type, dish, ingredient, amount, unit)
+                    "", "end", values=(meal_type, dish, ingredient, amount, unit, total_amount)
                 )
+                self.cursor.execute(
+                    "INSERT INTO dishes (meal_type, dish, ingredient, amount, unit) VALUES (?, ?, ?, ?, ?)",
+                    (meal_type, dish, ingredient, amount, unit)
+                )
+                self.conn.commit()
                 ingredient_window.destroy()
             else:
                 messagebox.showerror("Eingabefehler", "Bitte fülle alle Felder aus.")
@@ -253,6 +338,13 @@ class MealPlannerApp:
     def remove_ingredient(self):
         selected_item = self.tree.selection()
         if selected_item:
+            item = self.tree.item(selected_item)
+            meal_type, dish, ingredient, amount, unit, total_amount = item['values']
+            self.cursor.execute(
+                "DELETE FROM dishes WHERE meal_type = ? AND dish = ? AND ingredient = ?",
+                (meal_type, dish, ingredient)
+            )
+            self.conn.commit()
             self.tree.delete(selected_item)
         else:
             messagebox.showerror(
@@ -310,9 +402,19 @@ class MealPlannerApp:
             amount = amount_entry.get()
             unit = unit_entry.get()
             if meal_type and dish and ingredient and amount and unit:
+                try:
+                    person_count = int(self.person_count_entry.get())
+                except ValueError:
+                    person_count = 1
+                total_amount = float(amount) * person_count
                 self.tree.item(
-                    selected_item, values=(meal_type, dish, ingredient, amount, unit)
+                    selected_item, values=(meal_type, dish, ingredient, amount, unit, total_amount)
                 )
+                self.cursor.execute(
+                    "UPDATE dishes SET meal_type = ?, dish = ?, ingredient = ?, amount = ?, unit = ? WHERE meal_type = ? AND dish = ? AND ingredient = ?",
+                    (meal_type, dish, ingredient, amount, unit, values[0], values[1], values[2])
+                )
+                self.conn.commit()
                 ingredient_window.destroy()
             else:
                 messagebox.showerror("Eingabefehler", "Bitte fülle alle Felder aus.")
@@ -343,11 +445,17 @@ class MealPlannerApp:
             else:
                 if dish in self.default_ingredients:
                     for ingredient, amount, unit in self.default_ingredients[dish]:
+                        total_amount = amount * person_count
                         self.tree.insert(
                             "",
                             "end",
-                            values=(meal_type, dish, ingredient, amount, unit),
+                            values=(meal_type, dish, ingredient, amount, unit, total_amount),
                         )
+                        self.cursor.execute(
+                            "INSERT INTO meals (meal_type, dish, ingredient, amount_per_person, unit) VALUES (?, ?, ?, ?, ?)",
+                            (meal_type, dish, ingredient, amount, unit)
+                        )
+                        self.conn.commit()
 
             messagebox.showinfo(
                 "Hinzugefügt", f"{dish} für {meal_type} wurde hinzugefügt."
@@ -358,16 +466,27 @@ class MealPlannerApp:
                 "Bitte gib eine gültige Anzahl von Personen und Vegetariern ein.",
             )
 
-    def plan_meals(self):
+    def plan_all_meals(self):
+        self.plan_meals(self.tree.get_children())
+
+    def plan_selected_meals(self):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            messagebox.showerror(
+                "Auswahlfehler", "Bitte wähle eine oder mehrere Mahlzeiten aus der Liste aus."
+            )
+            return
+        self.plan_meals(selected_items)
+
+    def plan_meals(self, items):
         total_amounts = {}
         recipes = []
 
-        for row in self.tree.get_children():
-            meal_type, dish, ingredient, amount, unit = self.tree.item(row)["values"]
+        for item in items:
+            meal_type, dish, ingredient, amount, unit, total_amount = self.tree.item(item)["values"]
             if dish in self.default_ingredients:
                 person_count = int(self.person_count_entry.get())
-                vegetarian_count = int(self.vegetarian_count_entry.get())
-                amounts = self.get_amounts(dish, person_count, vegetarian_count)
+                amounts = self.get_amounts(dish, person_count)
                 recipe = self.get_recipe(dish)
                 if ingredient in amounts:
                     if ingredient in total_amounts:
@@ -386,7 +505,7 @@ class MealPlannerApp:
 
         self.result_label.config(text=result_text)
 
-    def get_amounts(self, dish, person_count, vegetarian_count):
+    def get_amounts(self, dish, person_count):
         amounts = {}
         if dish in self.default_ingredients:
             for ingredient, amount_per_person, unit in self.default_ingredients[dish]:
@@ -442,18 +561,62 @@ class MealPlannerApp:
         )
         suggestions_label.pack(pady=10, padx=10)
 
-    def save_plan(self):
-        plan = {
-            "meals": self.meals,
-            "ingredients": {
-                dish: ingredients for dish, ingredients in self.ingredients.items()
-            },
-        }
+    def save_plan_to_db(self):
+        self.cursor.execute("DELETE FROM meals")
+        self.conn.commit()
 
-        with open("meal_plan.json", "w") as f:
-            json.dump(plan, f)
-
+        for item in self.tree.get_children():
+            meal_type, dish, ingredient, amount, unit, total_amount = self.tree.item(item)["values"]
+            self.cursor.execute(
+                "INSERT INTO meals (meal_type, dish, ingredient, amount_per_person, unit) VALUES (?, ?, ?, ?, ?)",
+                (meal_type, dish, ingredient, amount, unit)
+            )
+        self.conn.commit()
         messagebox.showinfo("Gespeichert", "Planung wurde gespeichert.")
+
+    def save_as_pdf(self):
+        total_amounts = {}
+        recipes = []
+
+        for row in self.tree.get_children():
+            meal_type, dish, ingredient, amount, unit, total_amount = self.tree.item(row)["values"]
+            if dish in self.default_ingredients:
+                person_count = int(self.person_count_entry.get())
+                amounts = self.get_amounts(dish, person_count)
+                recipe = self.get_recipe(dish)
+                if ingredient in amounts:
+                    if ingredient in total_amounts:
+                        total_amounts[ingredient][0] += amounts[ingredient][0]
+                    else:
+                        total_amounts[ingredient] = [amounts[ingredient][0], unit]
+                recipes.append((dish, recipe))
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+
+        pdf.cell(200, 10, txt="Einkaufsliste", ln=True, align="C")
+        for item, (amount, unit) in total_amounts.items():
+            pdf.cell(200, 10, txt=f"{item}: {amount} {unit}", ln=True)
+
+        pdf.add_page()
+        pdf.cell(200, 10, txt="Rezepte", ln=True, align="C")
+        for dish, recipe in recipes:
+            pdf.cell(200, 10, txt=f"\nRezept für {dish}:", ln=True)
+            pdf.multi_cell(0, 10, txt=recipe)
+
+        pdf.output("meal_plan.pdf")
+        messagebox.showinfo("Gespeichert", "PDF wurde gespeichert.")
+
+    def save_as_csv(self):
+        data = []
+        for row in self.tree.get_children():
+            meal_type, dish, ingredient, amount, unit, total_amount = self.tree.item(row)["values"]
+            data.append((meal_type, dish, ingredient, amount, unit, total_amount))
+        
+        df = pd.DataFrame(data, columns=["Mahlzeit", "Gericht", "Zutat", "Menge pro Person", "Einheit", "Gesamtmenge"])
+        df.to_csv("meal_plan.csv", index=False)
+        messagebox.showinfo("Gespeichert", "CSV wurde gespeichert.")
 
 
 if __name__ == "__main__":

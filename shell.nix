@@ -10,6 +10,8 @@ pkgs.mkShell {
     black
     flake8
     pytest
+    fpdf 
+    pandas
   ] ++ [ pkgs.sqlite ];
 
   shellHook = ''
